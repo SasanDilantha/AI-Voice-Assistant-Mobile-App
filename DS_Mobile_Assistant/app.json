@@ -32,6 +32,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow DSAssis to access your microphone."
+        }
       ]
     ],
     "experiments": {

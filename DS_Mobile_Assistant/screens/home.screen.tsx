@@ -1,12 +1,13 @@
 import {
-    Alert,
-    Image,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  // StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LinearGradient } from "expo-linear-gradient";
 import { scale, verticalScale } from "react-native-size-matters";
@@ -21,122 +22,122 @@ import Reload from "@/assets/svgs/reload";
 
 const HomeScreen = () => {
 
-    const [text, setText] = useState("");
-    const [isRecording, setIsRecording] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [recording, setRecording] = useState<Audio.Recording>();
-    const [AIResponse, setAIResponse] = useState(false);
-    const [AISpeaking, setAISpeaking] = useState(false);
-    const lottieRef = useRef<LottieView>(null);
+  const [text, setText] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording>();
+  const [AIResponse, setAIResponse] = useState(false);
+  const [AISpeaking, setAISpeaking] = useState(false);
+  const lottieRef = useRef<LottieView>(null);
 
-    // get microphone permission
-    const getMicrophonePermission = async () => {
-        try {
-            const { granted } = await Audio.requestPermissionsAsync();
+  // get microphone permission
+  const getMicrophonePermission = async () => {
+    try {
+      const { granted } = await Audio.requestPermissionsAsync();
 
-            if (!granted) {
-                Alert.alert(
-                    "Permission",
-                    "Please grant permission to access microphone"
-                );
-                return false;
-            }
-            return true;
-        } catch (error) {
-            console.log(error);
-            return false;
+      if (!granted) {
+        Alert.alert(
+          "Permission",
+          "Please grant permission to access microphone"
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.log(error);
+      return false;
+    }
+  };
+
+  const recordingOptions: any = {
+    android: {
+      extension: ".wav",
+      outPutFormat: Audio.AndroidOutputFormat.MPEG_4,
+      androidEncoder: Audio.AndroidAudioEncoder.AAC,
+      sampleRate: 44100,
+      numberOfChannels: 2,
+      bitRate: 128000,
+    },
+    ios: {
+      extension: ".wav",
+      audioQuality: Audio.IOSAudioQuality.HIGH,
+      sampleRate: 44100,
+      numberOfChannels: 2,
+      bitRate: 128000,
+      linearPCMBitDepth: 16,
+      linearPCMIsBigEndian: false,
+      linearPCMIsFloat: false,
+    },
+  };
+
+  const startRecording = async () => {
+    const hasPermission = await getMicrophonePermission();
+    if (!hasPermission) return;
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      setIsRecording(true);
+      const { recording } = await Audio.Recording.createAsync(recordingOptions);
+      setRecording(recording);
+    } catch (error) {
+      console.log("Failed to start Recording", error);
+      Alert.alert("Error", "Failed to start recording");
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      setIsRecording(false);
+      setLoading(true);
+      await recording?.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+
+      const uri = recording?.getURI();
+
+      // send audio to whisper API for transcription
+      const transcript = await sendAudioToWhisper(uri!);
+
+      setText(transcript);
+
+      // send the transcript to gpt-4 API for response
+      await sendToGpt(transcript);
+    } catch (error) {
+      console.log("Failed to stop Recording", error);
+      Alert.alert("Error", "Failed to stop recording");
+    }
+  };
+
+  const sendAudioToWhisper = async (uri: string) => {
+    try {
+      const formData: any = new FormData();
+      formData.append("file", {
+        uri,
+        type: "audio/wav",
+        name: "recording.wav",
+      });
+      formData.append("model", "whisper-1");
+
+      const response = await axios.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
+            "Content-Type": "multipart/form-data",
+          },
         }
-    };
+      );
+      return response.data.text;
+    } catch (error) {
+      console.log(error);
+    }
+  };
 
-    const recordingOptions: any = {
-        android: {
-          extension: ".wav",
-          outPutFormat: Audio.AndroidOutputFormat.MPEG_4,
-          androidEncoder: Audio.AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: ".wav",
-          audioQuality: Audio.IOSAudioQuality.HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-      };
-
-      const startRecording = async () => {
-        const hasPermission = await getMicrophonePermission();
-        if (!hasPermission) return;
-        try {
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: true,
-            playsInSilentModeIOS: true,
-          });
-          setIsRecording(true);
-          const { recording } = await Audio.Recording.createAsync(recordingOptions);
-          setRecording(recording);
-        } catch (error) {
-          console.log("Failed to start Recording", error);
-          Alert.alert("Error", "Failed to start recording");
-        }
-      };
-
-      const stopRecording = async () => {
-        try {
-          setIsRecording(false);
-          setLoading(true);
-          await recording?.stopAndUnloadAsync();
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-          });
-    
-          const uri = recording?.getURI();
-    
-          // send audio to whisper API for transcription
-          const transcript = await sendAudioToWhisper(uri!);
-    
-          setText(transcript);
-    
-          // send the transcript to gpt-4 API for response
-          await sendToGpt(transcript);
-        } catch (error) {
-          console.log("Failed to stop Recording", error);
-          Alert.alert("Error", "Failed to stop recording");
-        }
-      };
-
-      const sendAudioToWhisper = async (uri: string) => {
-        try {
-          const formData: any = new FormData();
-          formData.append("file", {
-            uri,
-            type: "audio/wav",
-            name: "recording.wav",
-          });
-          formData.append("model", "whisper-1");
-    
-          const response = await axios.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            formData,
-            {
-              headers: {
-                Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
-                "Content-Type": "multipart/form-data",
-              },
-            }
-          );
-          return response.data.text;
-        } catch (error) {
-          console.log(error);
-        }
-      };
-
-      // send text to gpt4 API
+  // send text to gpt4 API
   const sendToGpt = async (text: string) => {
     try {
       const response = await axios.post(
@@ -147,7 +148,7 @@ const HomeScreen = () => {
             {
               role: "system",
               content:
-                "You are Artifonia, a friendly AI assistant who responds naturally and referes to yourself as Artifonia when asked for your name. You are a helpful assistant who can answer questions and help with tasks. You must always respond in English, no matter the input language,and provide helpful, clear answers",
+                "You are DSAssis, a friendly AI assistant who responds naturally and referes to yourself as Artifonia when asked for your name. You are a helpful assistant who can answer questions and help with tasks. You must always respond in English, no matter the input language,and provide helpful, clear answers",
             },
             {
               role: "user",
@@ -195,14 +196,15 @@ const HomeScreen = () => {
   }, [AISpeaking]);
 
 
-    return (
-        <LinearGradient
+  return (
+    <LinearGradient
       colors={["#250152", "#000"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.container}
     >
-      <StatusBar barStyle={"light-content"} />
+      {/* <StatusBar barStyle={'dark-content'}/> */}
+      <StatusBar style="light" />
 
       {/* back shadows */}
       <Image
@@ -344,17 +346,17 @@ const HomeScreen = () => {
         </View>
       )}
     </LinearGradient>
-    )
+  )
 }
 
 export default HomeScreen
 
 
 const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "#131313",
-    },
-  });
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#131313",
+  },
+});
